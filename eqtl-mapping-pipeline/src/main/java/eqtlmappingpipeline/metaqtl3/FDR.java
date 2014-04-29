@@ -238,6 +238,8 @@ public class FDR {
 
 
         String outFileName;
+        String outFileNameSnps;
+        String outFileNameProbes;
         String outFileNameAll;
 
         if (outputDir == null) {
@@ -246,16 +248,24 @@ public class FDR {
 
         if (m == FDRMethod.GENELEVEL) {
             outFileName = outputDir + "/eQTLsFDR" + fdrcutoff + "-GeneLevel.txt";
+            outFileNameSnps = outputDir + "/eQTLSNPsFDR" + fdrcutoff + "-GeneLevel.txt";
+            outFileNameProbes = outputDir + "/eQTLProbesFDR" + fdrcutoff + "-GeneLevel.txt";
             outFileNameAll = outputDir + "/eQTLsFDR-GeneLevel.txt.gz";
         } else if (m == FDRMethod.PROBELEVEL) {
             outFileName = outputDir + "/eQTLsFDR" + fdrcutoff + "-ProbeLevel.txt";
+            outFileNameSnps = outputDir + "/eQTLSNPsFDR" + fdrcutoff + "-ProbeLevel.txt";
+            outFileNameProbes = outputDir + "/eQTLProbesFDR" + fdrcutoff + "-ProbeLevel.txt";
             outFileNameAll = outputDir + "/eQTLsFDR-ProbeLevel.txt.gz";
         } else {
             outFileName = outputDir + "/eQTLsFDR" + fdrcutoff + ".txt";
+            outFileNameSnps = outputDir + "/eQTLSNPsFDR" + fdrcutoff + ".txt";
+            outFileNameProbes = outputDir + "/eQTLProbesFDR" + fdrcutoff + ".txt";
             outFileNameAll = outputDir + "/eQTLsFDR.txt.gz";
         }
 
         BufferedWriter outputWriterSignificant = new BufferedWriter(new FileWriter(outFileName));
+        BufferedWriter outputWriterESNPs = new BufferedWriter(new FileWriter(outFileNameSnps));
+        BufferedWriter outputWriterEProbes = new BufferedWriter(new FileWriter(outFileNameProbes));
         BufferedWriter outputWriterAll = new BufferedWriter(new FileWriter(outFileNameAll));
 
         String fileString = baseDir + "/eQTLs.txt.gz";
@@ -276,6 +286,12 @@ public class FDR {
         outputWriterAll.append(header);
         outputWriterAll.append("\tFDR\n");
 
+        outputWriterEProbes.append(header);
+        outputWriterEProbes.append("\tFDR\n");
+        
+        outputWriterESNPs.append(header);
+        outputWriterESNPs.append("\tFDR\n");
+        
         outputWriterSignificant.append(header);
         outputWriterSignificant.append("\tFDR\n");
 
@@ -284,10 +300,14 @@ public class FDR {
 // REAL DATA PROCESSING
         int itr = 0;
         HashSet<String> visitedEffects = new HashSet<String>();
+        HashSet<String> visitedSnps = new HashSet<String>();
+        HashSet<String> visitedProbes = new HashSet<String>();
         double lastEqtlPvalue = 0;
 
         double currentPvalue = 0;
         ArrayList<String> currentPvalueEqtls = new ArrayList<String>();
+        ArrayList<String> currentPvalueEqtlSnps = new ArrayList<String>();
+        ArrayList<String> currentPvalueEqtlProbes = new ArrayList<String>();
 
 
         int lastUsedPermutedPvalueIndex = 0;
@@ -309,60 +329,75 @@ public class FDR {
                     fdrId = data[4];
                 }
 
+                double eQtlPvalue = Double.parseDouble(data[0]);
 
+                if (itr > 0 && lastEqtlPvalue > eQtlPvalue) {
+                    System.err.println("Sorted P-Value list is not perfectly sorted!!!!");
+                    System.exit(-1);
+                }
+
+                if (eQtlPvalue > currentPvalue) {
+                    //Process old results for current pvalue
+
+                    double fdr = 0;
+                    if (currentPvalue >= uniquePermutedPvalues[0]) {
+
+                        while (uniquePermutedPvalues[lastUsedPermutedPvalueIndex + 1] <= currentPvalue && lastUsedPermutedPvalueIndex < uniquePermutedPvalues.length - 2) {
+                            ++lastUsedPermutedPvalueIndex;
+                        }
+                        fdr = uniquePermutedPvaluesCounts[lastUsedPermutedPvalueIndex] / itr;
+
+                    }
+
+                    for (int i = 0; i < currentPvalueEqtls.size(); ++i) {
+                        String cachedEqtls = currentPvalueEqtls.get(i);
+                        String cachedEqtlsProbe = currentPvalueEqtlProbes.get(i);
+                        String cachedEqtlsSnps = currentPvalueEqtlSnps.get(i);
+
+                        StringBuilder currentString = new StringBuilder();
+                        currentString.append(cachedEqtls).append('\t').append(String.valueOf(fdr)).append('\n');
+
+                        outputWriterAll.append(currentString.toString());
+
+                        if (fdr <= fdrcutoff) {
+                            if (!visitedProbes.contains(cachedEqtlsProbe)) {
+                                outputWriterEProbes.append(currentString.toString());
+                                visitedProbes.add(cachedEqtlsProbe);
+                            }
+                            if (!visitedSnps.contains(cachedEqtlsSnps)) {
+                                outputWriterESNPs.append(currentString.toString());
+                                visitedSnps.add(cachedEqtlsSnps);
+
+                            }
+
+                            outputWriterSignificant.append(currentString.toString());
+                            ++nrSignificantEQTLs;
+                        }
+
+                    }
+
+
+                    //Create new temp list for this pvalue
+                    currentPvalue = eQtlPvalue;
+                    currentPvalueEqtls.clear();
+                    currentPvalueEqtlProbes.clear();
+                    currentPvalueEqtlSnps.clear();
+                    currentPvalueEqtls.add(str);
+                    currentPvalueEqtlProbes.add(data[eQTLTextFile.PROBE]);
+                    currentPvalueEqtlSnps.add(data[eQTLTextFile.SNP]);
+
+                } else {
+                    //add to current pvalue list
+                    currentPvalueEqtls.add(str);
+                    currentPvalueEqtlProbes.add(data[eQTLTextFile.PROBE]);
+                    currentPvalueEqtlSnps.add(data[eQTLTextFile.SNP]);
+                }
+
+                lastEqtlPvalue = eQtlPvalue;
+                
                 if (m == FDRMethod.FULL || (!fdrId.equals("-") && !visitedEffects.contains(fdrId))) {
-                    double eQtlPvalue = Double.parseDouble(data[0]);
-
-                    if (itr > 0 && lastEqtlPvalue > eQtlPvalue) {
-                        System.err.println("Sorted P-Value list is not perfectly sorted!!!!");
-                        System.exit(-1);
-                    }
-
-                    if (eQtlPvalue > currentPvalue) {
-                        //Process old results for current pvalue
-
-                        double fdr = 0;
-                        if (currentPvalue >= uniquePermutedPvalues[0]) {
-
-                            while (uniquePermutedPvalues[lastUsedPermutedPvalueIndex + 1] <= currentPvalue && lastUsedPermutedPvalueIndex < uniquePermutedPvalues.length - 2) {
-                                ++lastUsedPermutedPvalueIndex;
-                            }
-                            fdr = uniquePermutedPvaluesCounts[lastUsedPermutedPvalueIndex] / itr;
-
-                        }
-
-                        for (String cachedEqtls : currentPvalueEqtls) {
-                            outputWriterAll.append(cachedEqtls);
-                            outputWriterAll.append('\t');
-                            outputWriterAll.append(String.valueOf(fdr));
-                            outputWriterAll.append('\n');
-
-                            if (fdr <= fdrcutoff) {
-                                outputWriterSignificant.append(cachedEqtls);
-                                outputWriterSignificant.append('\t');
-                                outputWriterSignificant.append(String.valueOf(fdr));
-                                outputWriterSignificant.append('\n');
-                                ++nrSignificantEQTLs;
-                            }
-
-                        }
-
-
-                        //Create new temp list for this pvalue
-                        currentPvalue = eQtlPvalue;
-                        currentPvalueEqtls.clear();
-                        currentPvalueEqtls.add(str);
-
-                    } else {
-                        //add to current pvalue list
-                        currentPvalueEqtls.add(str);
-                    }
-
-
-
-                    lastEqtlPvalue = eQtlPvalue;
-                    visitedEffects.add(fdrId);
                     itr++;
+                    visitedEffects.add(fdrId);
                 }
 
                 str = realEQTLs.readLine();
@@ -381,44 +416,44 @@ public class FDR {
 
         }
 
-        for (String cachedEqtls : currentPvalueEqtls) {
-            outputWriterAll.append(cachedEqtls);
-            outputWriterAll.append('\t');
-            outputWriterAll.append(String.valueOf(fdr));
-            outputWriterAll.append('\n');
+        for (int i = 0; i < currentPvalueEqtls.size(); ++i) {
+            String cachedEqtls = currentPvalueEqtls.get(i);
+            String cachedEqtlsProbe = currentPvalueEqtlProbes.get(i);
+            String cachedEqtlsSnps = currentPvalueEqtlSnps.get(i);
+
+            StringBuilder currentString = new StringBuilder();
+            currentString.append(cachedEqtls).append('\t').append(String.valueOf(fdr)).append('\n');
+
+            outputWriterAll.append(currentString.toString());
 
             if (fdr <= fdrcutoff) {
-                outputWriterSignificant.append(cachedEqtls);
-                outputWriterSignificant.append('\t');
-                outputWriterSignificant.append(String.valueOf(fdr));
-                outputWriterSignificant.append('\n');
+                if (!visitedProbes.contains(cachedEqtlsProbe)) {
+                    outputWriterEProbes.append(currentString.toString());
+                    visitedSnps.add(cachedEqtlsProbe);
+                }
+                if (!visitedSnps.contains(cachedEqtlsSnps)) {
+                    outputWriterESNPs.append(currentString.toString());
+                    visitedSnps.add(cachedEqtlsSnps);
+
+                }
+
+                outputWriterSignificant.append(currentString.toString());
                 ++nrSignificantEQTLs;
             }
 
         }
 
 
-
-
         realEQTLs.close();
         outputWriterAll.close();
+        outputWriterEProbes.close();
+        outputWriterESNPs.close();
         outputWriterSignificant.close();
 
-        //Process a certain P-Value, determine how many are significant:
-        //System.out.println("\n");
-        //System.out.println("Significant detected eQTLs:");
-
-
         //System.out.println("");
-        String output = "Number of significant eQTLs:\t" + nrSignificantEQTLs;
-        System.out.println(output);
-
-        String fileSuffix = "";
-        if (m == FDRMethod.GENELEVEL) {
-            fileSuffix = "-GeneLevel";
-        } else if (m == FDRMethod.PROBELEVEL) {
-            fileSuffix = "-ProbeLevel";
-        }
+        System.out.println("Number of significant eQTLs:\t" + nrSignificantEQTLs);
+        System.out.println(" - Number of unique SNPs, constituting an eQTL:\t" + visitedSnps.size());
+        System.out.println(" - Number of unique probes, constituting an eQTL:\t" + visitedProbes.size());
 
         if (createQQPlot) {
 
@@ -432,110 +467,5 @@ public class FDR {
             //		pValueSignificant, nrSignificantEQTLs);
         }
 
-        generateESNPsFile(outputDir + "/eQTLsFDR" + fdrcutoff + fileSuffix + ".txt", outputDir + "/eQTLSNPsFDR" + fdrcutoff + fileSuffix + ".txt");
-        generateEProbesFile(outputDir + "/eQTLsFDR" + fdrcutoff + fileSuffix + ".txt", outputDir + "/eQTLProbesFDR" + fdrcutoff + fileSuffix + ".txt");
-
-    }
-
-    /**
-     * Generates an eQTL SNPs file
-     *
-     * @param inputFile
-     * @param outputFile
-     */
-    private static void generateESNPsFile(String inputFile, String outputFile) throws IOException {
-
-        //Determine the number of unique SNPs and what the most significant eQTL for this SNP is:
-        HashMap<String, Double> hashTopSNPsAbsZScore = new HashMap<String, Double>();
-        HashMap<String, String> hashTopSNPsAnnotation = new HashMap<String, String>();
-        ArrayList<String> vecTopSNPs = new ArrayList<String>();
-        String header;
-
-        TextFile in = new TextFile(inputFile, TextFile.R);
-        String str = in.readLine();
-        header = str;
-        while ((str = in.readLine()) != null) {
-            String[] data = str.split("\t");
-            double absZScore = Math.abs(Double.parseDouble(data[10]));
-            String rsName = data[1];
-            if (hashTopSNPsAbsZScore.get(rsName) != null) {
-                double absZScorePrevious = hashTopSNPsAbsZScore.get(rsName);
-                if (absZScore > absZScorePrevious) {
-                    hashTopSNPsAbsZScore.put(rsName, absZScore);
-                    hashTopSNPsAnnotation.put(rsName, str);
-                }
-            } else {
-                vecTopSNPs.add(rsName);
-                hashTopSNPsAbsZScore.put(rsName, absZScore);
-                hashTopSNPsAnnotation.put(rsName, str);
-            }
-        }
-        in.close();
-
-        //Per eSNP write the most significant eQTL that has been recorded to file:
-        TextFile out = new TextFile(outputFile, TextFile.W);
-        out.writeln(header);
-        for (int s = 0; s < vecTopSNPs.size(); s++) {
-            String rsName = vecTopSNPs.get(s);
-            String annotation = hashTopSNPsAnnotation.get(rsName);
-            out.writeln(annotation);
-        }
-        out.close();
-
-        String output = " - Number of unique SNPs, constituting an eQTL:\t" + vecTopSNPs.size();
-        System.out.println(output);
-
-    }
-
-    /**
-     * Generates a file containing combinations of the most significant eQTL
-     * with probes
-     *
-     * @param inputFile location of text file containing data on eQTLs
-     * @param outputFile the location where the output will be written
-     */
-    private static void generateEProbesFile(String inputFile, String outputFile) throws IOException {
-
-        //Determine the number of unique probes and what the most significant eQTL for each probe is:
-        HashMap<String, Double> hashTopProbesAbsZScore = new HashMap<String, Double>();
-        HashMap<String, String> hashTopProbesAnnotation = new HashMap<String, String>();
-        ArrayList<String> vecTopProbes = new ArrayList<String>();
-        String header;
-
-        TextFile in = new TextFile(inputFile, TextFile.R);
-        String str = in.readLine();
-        header = str;
-        while ((str = in.readLine()) != null) {
-            String[] data = str.split("\t");
-            double absZScore = Math.abs(Double.parseDouble(data[10]));
-            String probe = data[4];
-            if (hashTopProbesAbsZScore.get(probe) != null) {
-                double absZScorePrevious = hashTopProbesAbsZScore.get(probe);
-                if (absZScore > absZScorePrevious) {
-                    hashTopProbesAbsZScore.put(probe, absZScore);
-                    hashTopProbesAnnotation.put(probe, str);
-                }
-            } else {
-                vecTopProbes.add(probe);
-                hashTopProbesAbsZScore.put(probe, absZScore);
-                hashTopProbesAnnotation.put(probe, str);
-            }
-        }
-        in.close();
-
-        //Per eSNP write the most significant eQTL that has been recorded to file:
-        TextFile out = new TextFile(outputFile, TextFile.W);
-        out.writeln(header);
-        for (int s = 0; s < vecTopProbes.size(); s++) {
-            String probe = vecTopProbes.get(s);
-            String annotation = hashTopProbesAnnotation.get(probe);
-            out.writeln(annotation);
-
-        }
-
-        out.close();
-
-        String output = " - Number of unique probes, constituting an eQTL:\t" + vecTopProbes.size();
-        System.out.println(output);
     }
 }
