@@ -248,6 +248,11 @@ public class DownstreamerEnrichment {
 				}
 			}
 
+			if(genesOverlappingWithPathwayDatabase.size() < 100){
+                LOGGER.error("Fewer than 100 GWAS genes overlapping with {}", pathwayDatabase.getName());
+				continue;
+			}
+
 			//make copy because normalization on selected genes is inplace
 			final DoubleMatrixDataset<String, String> covariatesToCorrectGenePvaluesSubset = covariatesToCorrectGenePvalues == null ? null : covariatesToCorrectGenePvalues.viewRowSelection(genesOverlappingWithPathwayDatabase).duplicate();
 
@@ -388,21 +393,6 @@ public class DownstreamerEnrichment {
 					final ArrayList<String> significantEigenvectorsIdThisTrait = new ArrayList<>();
 
 					for (int eigenVectorI = 0; eigenVectorI < numberEigenvectors; ++eigenVectorI) {
-
-//						System.err.println("WARNING HARD CODED OVERWRITE");
-//						System.out.println("WARNING HARD CODED OVERWRITE");
-//						
-//						////----------------------
-//						
-//						String name = eigenvectorsInDataset.get(eigenVectorI);
-//						if(name.equals("Comp_7") || name.equals("Comp_28") || name.equals("Comp_11")){
-//							significantEigenvectorsIdThisTrait.add(eigenvectorsInDataset.get(eigenVectorI));
-//							pathwaySelectedIntermediates.setElementQuick(trait, eigenVectorI, 1);
-//						}
-//						
-//						
-//						
-//						//------------------------
 						
 						if (pathwayQvaluesIntermediates.getElementQuick(trait, eigenVectorI) <= options.getFdrThresholdEigenvectors()) {
 							significantEigenvectorsIdThisTrait.add(eigenvectorsInDataset.get(eigenVectorI));
@@ -595,6 +585,9 @@ public class DownstreamerEnrichment {
 					pathwayPvalues.getCol(trait).assign(thisGwasRestuls.getPvalueForMainEffect());
 					pathwayBetas.getCol(trait).assign(thisGwasRestuls.getBetaForMainEffect());
 				}
+
+				pathwayBetas.save(options.getIntermediateFolder() + "/" + pathwayDatabase.getName() + "_" + "betas.txt");
+				pathwayPvalues.save(options.getIntermediateFolder() + "/" + pathwayDatabase.getName() + "_" + "pvalues.txt");
 
 				pathwayQvalues = DownstreamerUtilities.adjustPvaluesBenjaminiHochberg(pathwayPvalues);
 			}
