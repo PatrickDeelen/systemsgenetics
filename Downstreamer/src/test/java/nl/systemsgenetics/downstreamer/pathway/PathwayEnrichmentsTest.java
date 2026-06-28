@@ -76,7 +76,7 @@ public class PathwayEnrichmentsTest {
 	 * Test of createColumnForceNormalDuplicate method, of class
 	 * PathwayEnrichments.
 	 */
-	@Test
+//	@Test
 //	public void testGroupCorrelatedGenesPerChrArmAndCollapseDatasetToMetaGenes() throws URISyntaxException, Exception {
 //
 //		File geneZscoresNullGwasFile = new File(this.getClass().getResource("/geneZscoresNullGwas.txt").toURI());
